@@ -1,0 +1,203 @@
+library(caret)
+filePath_train <- '.../pml-training.csv'
+training <- read.csv(filePath_train)
+
+### getting numeric subdataframe and remove columns with NA's
+nums <- sapply(training, is.numeric)
+training_num <- training[ , nums]  
+training_num <- training_num[ , apply(training_num, 2,
+             function(x) !any(is.na(x)))]
+training_num$classe <- training$classe
+
+### splitting data
+set.seed(123)
+samp <- sample(2, nrow(training), replace = TRUE,
+                  prob = c(0.7,0.3))
+trainSet_num <- training_num[samp == 1,]
+testSet_num  <- training_num[samp == 2,]
+
+### Standardization
+preObj <- preProcess(trainSet_num[,1:56], 
+                        method=c("center","scale"))
+trainSet_st <- predict(preObj, trainSet_num[,1:56])
+trainSet_st$classe <- trainSet_num$classe
+testSet_st <- predict(preObj, testSet_num[,1:56])
+testSet_st$classe <- testSet_num$classe
+
+2 Models Used for Classification
+
+a) Decision tree - rpart
+First model - decision tree using rpart with caret
+Predictors were obtained from a PCA on the numeric variables that captures 80% of the variance
+library(rpart)
+## PCA
+pca <- preProcess(trainSet_st[,1:56], method = "pca",
+                     thresh = 0.8)
+trainPC <- predict(pca, trainSet_st[,1:56])
+
+## Training Process
+set.seed(123)
+modelFit <- train(trainSet_st$classe ~., method = "rpart", 
+                     data = trainPC)
+modelFit$finalModel
+trainPred <- predict(modelFit, trainPC)
+confusionMatrix(trainPred, trainSet_num$classe)  
+## In sample error: 54.3%
+
+## Prediction on the test set
+testPC <- predict(pca, testSet_st[,1:56])
+prediction <- predict(modelFit, testPC)
+confusionMatrix(testSet_num$classe, prediction)  
+## Out of sample error: 54.3%
+Confusion Matrix and Statistics on the test set
+            Reference
+  Prediction    A    B    C    D    E
+            A 1099  215  183    0  167
+            B  489  384  184    0   43
+            C  328   60  605    0   50
+            D  153  101  495    0  188          
+            E  132  121  247    0  570          
+            Accuracy : 0.4572
+            95% CI : (0.4443, 0.4701)
+High In and Out of sample errors, low Accuracy
+The model does not classify any records to the D category
+
+b) Support Vector Machine with Radial Basis Kernel Function
+Predictors are obtained from a PCA on the numeric variables with 5 components
+trainControl() function set to 5-fold cross validation
+## PCA with 5 components
+pca_svm <- preProcess(trainSet_st[,1:56], 
+                         method = "pca", pcaComp = 5)
+trainPC_svm <- predict(pca_svm, trainSet_st[,1:56])
+## Setting up trainControl() function
+tc = trainControl(method = "cv", number = 5)
+
+## Training process
+set.seed(825)
+svmFit <- train(trainSet_st$classe ~ ., data = trainPC_svm, 
+                method = "svmRadial", trControl = tc)
+svmFit$finalModel
+
+## Predicting on test data
+testPC_svm <- predict(pca_svm, testSet_st[,1:56])
+prediction_svm <- predict(svmFit, testPC_scv)
+
+## Correct predictions
+predRight_svm <- prediction_svm == testSet_st$classe
+## Confusion Matrix on the test set
+confusionMatrix(prediction_svm, testSet_st$classe)
+Confusion Matrix and Statistics on the test set
+            Reference
+  Prediction    A    B    C     D    E          
+            A 1223  189  288   95   82                              
+            B   82  577  106   69   98          
+            C  135   93  428  108   71          
+            D  189  129  180  609  141                    
+            E   35  112   41   56  678          
+            
+            OOB estimate of  error rate: 39.6%
+            Accuracy : 0.6046
+            95% CI : (0.5919, 0.6172)
+Plot of correct vs incorrect predictions
+
+
+ Random Forests
+ 
+a) Preprocessing with PCA, 3 components - 5-fold cross validation
+Predictors were obtained from a PCA on the numeric variables with 3 components
+Confusion Matrix and Statistics on the test set (No code chunk for this model)
+            Reference
+  Prediction    A    B    C     D    E          
+            A 1241  145  147   82   86          
+            B   95  651  118   83  120          
+            C  132  124  642  105  103          
+            D  122   95   93  583  100              
+            E   74   85   43   84  661          
+            
+            OOB estimate of  error rate: 34.47%
+            Accuracy : 0.6498
+            95% CI : (0.6347, 0.6621)
+Plot of correct vs incorrect predictions
+
+
+b) Preprocessing with PCA, 5 components - 5-fold cross validation
+Predictors were obtained from a PCA on the numeric variables with 5 components
+###### Random Forest with 5 components
+library(randomForest)
+## PCA
+pca_rf2 <- preProcess(trainSet_st[,1:56], 
+                         method = "pca", pcaComp = 5)
+trainPC_rf2 <- predict(pca_rf2, trainSet_st[,1:56])
+## Setting up trainControl() function
+tc = trainControl(method = "cv", number = 5) 
+# 5-fold cross validation
+
+##Training process
+set.seed(17)
+modelFit_rf2 <- train(trainSet_st$classe ~ ., 
+                         method = "rf",
+                         trainControl = tc, 
+                         data = trainPC_rf2)
+modelFit_rf2$finalModel
+
+## Prediction on the test set
+testPC_rf2 <- predict(pca_rf2, testSet_st[,1:56])
+prediction_rf2 <- predict(modelFit_rf2, testPC_rf2)
+## Correct classifications
+predRight_rf2 <- prediction_rf2 == testSet_st$classe
+## ConfusionMatrix on the test set
+confusionMatrix(prediction_rf2, testSet_st$classe)
+Confusion Matrix and Statistics on the Training and Test Set
+        Type of random forest: classification
+        Number of trees: 500
+        No. of variables tried at each split: 2
+        OOB estimate of  error rate: 14.47%
+
+      Training      Reference                                      
+  Prediction    A    B    C    D    E   class.error         
+            A 3541  100  131   98   46  0.09576098                    
+            B  179 2163  153   96  106  0.19799778                    
+            C  114  139 1955  120   51  0.17822615                   
+            D   86   51  148 1937   57  0.15006582                    
+            E   70  110   95   96 2166  0.14623571                    
+
+      Test       Reference                                                                        
+      Prediction    A    B    C    D    E                                                            
+               A 1493   59   42   43   29
+               B   38  917   56   14   45
+               C   66   61  880   86   41
+               D   43   40   47  773   28
+               E   24   23   18   21  927
+
+               Accuracy : 0.8583 
+               95% CI : (0.849, 0.8671)
+By classes
+          
+             Class: A Class: B Class: C Class: D Class: E
+Sensitivity    0.8972   0.8336   0.8437   0.8250   0.8664
+Specificity    0.9583   0.9675   0.9468   0.9676   0.9819
+Pos Pred Value 0.8962   0.8570   0.7760   0.8303   0.9151
+Neg Pred Value 0.9588   0.9614   0.9652   0.9664   0.9702
+Plot of correct vs incorrect predictions
+
+
+Summary of Models
+
+The lowest out of sample error was obtained by using Random Forests on 5 predictors
+The model correctly classified over 85% of the cases in the test set
+3 Predicting the Test Cases with Random Forest on 5 predictors
+filePath_test <- '.../pml-testing.csv'
+valid <- read.csv(filePath_test)
+
+## Preprocessing the data
+valid_num <- valid[,nums]
+valid_num <- valid_num[ , apply(valid_num, 2,
+                                   function(x) !any(is.na(x)))]
+valid_st <- predict(preObj, valid_num)
+validPC_rf <- predict(pca_rf2, valid_st)
+
+## Prediction
+pred_valid_rf <- predict(modelFit_rf2, validPC_rf)
+pred_valid_rf
+  [1] B A B A A E D B A A B C B A E E A B B B
+  Levels: A B C D E
